@@ -20,7 +20,7 @@ Chiefr aims to solve this problem both with a better process and supporting tool
 
 ## How?
 
-Chiefr requires to split up a single project to multiple logical segments, where every segment has its
+Chiefr requires to split a single project up to multiple logical segments, where every segment has its
 own maintainers, repository and optionally other services like mailing lists or chat. Depending on the size
 of a project, its segments can be split into even smaller segments to be more manageable.
 
