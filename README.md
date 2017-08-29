@@ -72,7 +72,7 @@ Segment attributes:
  - `Priority`: If a changeset affects multiple segments, priority can describe the order of segments listed
  - `Topics`: Comma separated list of segment's topics
 
-example section in `.maintainers.ini`:
+example segment in `.maintainers.ini`:
 ```
 [code]
 Repository = https://github.com/asciimoo/chiefr
