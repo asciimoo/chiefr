@@ -29,9 +29,12 @@ If you have any question about applying this model to your project, feel free to
 
 ## Features
 
-As a maintainer: Chiefr allows to distribute the ownership of different parts of the codebase to different maintainers
+As a maintainer:
+ - Distribute the ownership of different parts of the codebase to different maintainers
+ - Automate pull request labeling and the assignment of related maintainers
 
-As a contributor: Chiefr shows the appropriate repository and maintainers to submit your contributions
+As a contributor:
+ - Chiefr shows the appropriate repository and maintainers to submit your contributions
 
 
 ## Usage
@@ -42,9 +45,9 @@ As a contributor: Chiefr shows the appropriate repository and maintainers to sub
 Chiefr is also a command-line tool which depends on `.maintainers.ini` and has the following commands:
  - `submit`: shows where to submit your patch
  - `list`: lists all the project segments
+ - `check-pull-request`: validates a pull request against the `.maintainers.ini`
  - `ask`: shows where to ask questions about a topic (TODO)
  - `add`: adds new segment to the `.maintainers.ini` (TODO)
- - `check-pull-request`: validates a pull request against the `.maintainers.ini` (TODO)
  - `scan-project`: searches for project pieces that don't have maintainers (TODO)
 
 

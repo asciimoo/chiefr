@@ -104,6 +104,18 @@ func main() {
 			}
 		}
 	})
+	app.Command("check-pull-request", "Submit patches to maintainers", func(cmd *cli.Cmd) {
+		ref := cmd.StringArg("REVISION", "", "Base git revision of the patch")
+		//repo := cmd.StringArg("PULL-REQUEST-URL", "", "URL of the pull request")
+		//key := cmd.StringArg("API-KEY", "", "API key to edit pull request's labels and maintainers")
+		cmd.Action = func() {
+			err := checkPullRequest(config, "./", *ref)
+			if err != nil {
+				fmt.Println(err.Error())
+				os.Exit(3)
+			}
+		}
+	})
 
 	app.Action = func() {
 		app.PrintHelp()
@@ -223,6 +235,42 @@ func initMaintainers(maintainersFileName string) (*Config, error) {
 		c.Segments[s.Name()] = ps
 	}
 	return c, nil
+}
+
+func checkPullRequest(c *Config, repoPath, revision string) error {
+	segments, err := getPatchSegments(c, repoPath, revision)
+	if err != nil {
+		return err
+	}
+	if len(segments) == 0 {
+		return fmt.Errorf("No matching segments found for this patch")
+	}
+	prTopics := make([]string, 0)
+	prChiefs := make([]string, 0)
+	for _, s := range segments {
+		for _, t := range s.Topics {
+			appendNew(&prTopics, t)
+		}
+		for _, c := range s.Chiefs {
+			appendNew(&prChiefs, c)
+		}
+	}
+	fmt.Println(prTopics)
+	fmt.Println(prChiefs)
+	return nil
+}
+
+func appendNew(arr *[]string, s string) {
+	found := false
+	for _, s2 := range *arr {
+		if s == s2 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		*arr = append(*arr, s)
+	}
 }
 
 func submit(c *Config, repoPath, revision string) error {
