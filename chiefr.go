@@ -359,7 +359,11 @@ func getCommitByRev(repo *git.Repository, revision string) (*object.Commit, erro
 		if err != nil {
 			rev, err = repo.ResolveRevision(plumbing.Revision("refs/heads/" + revision))
 			if err != nil {
-				return nil, fmt.Errorf("Failed to resolve revision '%s'", revision)
+				ref, err := repo.Reference(plumbing.ReferenceName("refs/remotes/"+revision), true)
+				if err != nil {
+					return nil, fmt.Errorf("Failed to resolve revision '%s'", revision)
+				}
+				*rev = ref.Hash()
 			}
 		}
 		commit, err = repo.CommitObject(*rev)
