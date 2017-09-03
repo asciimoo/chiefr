@@ -2,14 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-ini/ini"
+	"github.com/google/go-github/github"
 	"github.com/jawher/mow.cli"
+	"golang.org/x/oauth2"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/format/diff"
@@ -53,6 +59,94 @@ type Config struct {
 	Segments ProjectSegments
 }
 
+type ProjectManager interface {
+	SetAPIKey(key string)
+	HandlePullRequest(pullRequestURL string, segments ProjectSegments) error
+}
+
+func getProjectManagerFromURL(u string) (ProjectManager, error) {
+	parsedURL, err := url.Parse(u)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse project manager url: %s", err)
+	}
+	if parsedURL.Host == "github.com" {
+		return &GitHubManager{}, nil
+	}
+	return nil, fmt.Errorf("Cannot find project manager handler for url '%s'", u)
+}
+
+type GitHubManager struct {
+	APIKey string
+}
+
+func (g *GitHubManager) SetAPIKey(key string) {
+	g.APIKey = key
+}
+
+var githubAPIRepoURL string = "https://api.github.com/repos/"
+
+func (g *GitHubManager) HandlePullRequest(u string, segments ProjectSegments) error {
+	// https://developer.github.com/v3/issues/assignees/#add-assignees-to-an-issue
+	// https://developer.github.com/v3/issues/labels/#add-labels-to-an-issue
+	if len(segments) == 0 {
+		return fmt.Errorf("No matching segments found for this patch. Please edit your maintainers file")
+	}
+	URL, err := url.Parse(u)
+	if err != nil {
+		return fmt.Errorf("Failed to parse pull request URL: %s", err)
+	}
+	prTopics := make([]string, 0)
+	prChiefs := make([]string, 0)
+	// TODO reviewers
+	repoURL := ""
+	for _, s := range segments {
+		fmt.Println(u, s.Repository)
+		if repoURL == "" && strings.HasPrefix(u, s.Repository) {
+			repoURL = s.Repository
+		}
+		for _, t := range s.Topics {
+			appendNew(&prTopics, t)
+		}
+		for _, c := range s.Chiefs {
+			appendNew(&prChiefs, c)
+		}
+	}
+	if len(prChiefs) == 0 {
+		return errors.New("Chiefs not found for this pull request")
+	}
+	if repoURL == "" {
+		// TODO comment the valid repo url to the PR and close it
+		return errors.New("No repository found for this pull request")
+	}
+	pathParts := strings.Split(URL.Path, "/")
+	if len(pathParts) != 5 || pathParts[3] != "pull" || pathParts[1] == "" || pathParts[2] == "" {
+		return errors.New("Invalid pull request URL")
+	}
+	user := pathParts[1]
+	repo := pathParts[2]
+	prNum, err := strconv.Atoi(pathParts[4])
+	if err != nil {
+		return errors.New("Invalid pull request URL")
+	}
+	ctx := context.Background()
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: g.APIKey},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+
+	client := github.NewClient(tc)
+
+	_, _, err = client.Issues.AddLabelsToIssue(ctx, user, repo, prNum, prTopics)
+	if err != nil {
+		return fmt.Errorf("Failed to add labels to pull request: %s", err)
+	}
+	_, _, err = client.Issues.AddAssignees(ctx, user, repo, prNum, prChiefs)
+	if err != nil {
+		return fmt.Errorf("Failed to add assignees to pull request: %s", err)
+	}
+	return nil
+}
+
 type orderedSegmentList []*ProjectSegment
 
 func (o orderedSegmentList) Len() int           { return len(o) }
@@ -71,10 +165,12 @@ func main() {
 		config, err = initMaintainers(*mf)
 		if err != nil {
 			fmt.Println(err.Error())
+			app.PrintHelp()
 			os.Exit(1)
 		}
 		if config.Segments == nil {
 			fmt.Println("Error: empty maintainers file")
+			app.PrintHelp()
 			os.Exit(2)
 		}
 		if len(config.Segments) == 0 {
@@ -95,7 +191,7 @@ func main() {
 		}
 	})
 	app.Command("submit", "Submit patches to maintainers", func(cmd *cli.Cmd) {
-		ref := cmd.StringArg("REVISION", "", "Base git revision of the patch")
+		ref := cmd.StringArg("REVISION", "", "Git revision of the patch's first commit")
 		cmd.Action = func() {
 			err := submit(config, "./", *ref)
 			if err != nil {
@@ -104,12 +200,12 @@ func main() {
 			}
 		}
 	})
-	app.Command("check-pull-request", "Submit patches to maintainers", func(cmd *cli.Cmd) {
-		ref := cmd.StringArg("REVISION", "", "Base git revision of the patch")
-		//repo := cmd.StringArg("PULL-REQUEST-URL", "", "URL of the pull request")
-		//key := cmd.StringArg("API-KEY", "", "API key to edit pull request's labels and maintainers")
+	app.Command("update-pull-request", "Update pull request chiefs and topics according to the maintainers file", func(cmd *cli.Cmd) {
+		ref := cmd.StringArg("REVISION", "", "Git revision of the patch's first commit")
+		repo := cmd.StringArg("PULL_REQUEST_URL", "", "URL of the pull request")
+		key := cmd.StringArg("API_KEY", "", "API key of the project")
 		cmd.Action = func() {
-			err := checkPullRequest(config, "./", *ref)
+			err := checkPullRequest(config, "./", *ref, *repo, *key)
 			if err != nil {
 				fmt.Println(err.Error())
 				os.Exit(3)
@@ -120,6 +216,7 @@ func main() {
 	app.Action = func() {
 		app.PrintHelp()
 	}
+
 	app.Run(os.Args)
 }
 
@@ -237,27 +334,17 @@ func initMaintainers(maintainersFileName string) (*Config, error) {
 	return c, nil
 }
 
-func checkPullRequest(c *Config, repoPath, revision string) error {
+func checkPullRequest(c *Config, repoPath, revision, prURL, APIKey string) error {
+	pm, err := getProjectManagerFromURL(prURL)
+	if err != nil {
+		return err
+	}
 	segments, err := getPatchSegments(c, repoPath, revision)
 	if err != nil {
 		return err
 	}
-	if len(segments) == 0 {
-		return fmt.Errorf("No matching segments found for this patch")
-	}
-	prTopics := make([]string, 0)
-	prChiefs := make([]string, 0)
-	for _, s := range segments {
-		for _, t := range s.Topics {
-			appendNew(&prTopics, t)
-		}
-		for _, c := range s.Chiefs {
-			appendNew(&prChiefs, c)
-		}
-	}
-	fmt.Println(prTopics)
-	fmt.Println(prChiefs)
-	return nil
+	pm.SetAPIKey(APIKey)
+	return pm.HandlePullRequest(prURL, segments)
 }
 
 func appendNew(arr *[]string, s string) {
