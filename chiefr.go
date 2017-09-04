@@ -22,6 +22,8 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
+const VERSION string = "0.1.0"
+
 // Describe a project segment and its members and resources
 // ProjectSegment can be any logical piece of a project
 type ProjectSegment struct {
@@ -210,6 +212,11 @@ func main() {
 				fmt.Println(err.Error())
 				os.Exit(3)
 			}
+		}
+	})
+	app.Command("version", "Chiefr version information", func(cmd *cli.Cmd) {
+		cmd.Action = func() {
+			fmt.Printf("Chiefr v%s\n", VERSION)
 		}
 	})
 
