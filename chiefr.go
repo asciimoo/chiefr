@@ -102,7 +102,6 @@ func (g *GitHubManager) HandlePullRequest(u string, segments ProjectSegments) er
 	// TODO reviewers
 	repoURL := ""
 	for _, s := range segments {
-		fmt.Println(u, s.Repository)
 		if repoURL == "" && strings.HasPrefix(u, s.Repository) {
 			repoURL = s.Repository
 		}
@@ -185,10 +184,14 @@ func main() {
 			fmt.Println("not implemented")
 		}
 	})
-	app.Command("list", "List maintainers", func(cmd *cli.Cmd) {
+	app.Command("list", "List files and their segments", func(cmd *cli.Cmd) {
+		path := cmd.StringArg("PATH_REGEX", ".*", "Path regex to filter files")
+		cmd.Spec = "[PATH_REGEX]"
 		cmd.Action = func() {
-			for _, segment := range config.Segments {
-				fmt.Printf("%s\n\n", segment.String())
+			err := list(config, "./", *path)
+			if err != nil {
+				fmt.Println(err.Error())
+				os.Exit(3)
 			}
 		}
 	})
@@ -198,7 +201,7 @@ func main() {
 			err := submit(config, "./", *ref)
 			if err != nil {
 				fmt.Println(err.Error())
-				os.Exit(3)
+				os.Exit(4)
 			}
 		}
 	})
@@ -210,7 +213,7 @@ func main() {
 			err := checkPullRequest(config, "./", *ref, *repo, *key)
 			if err != nil {
 				fmt.Println(err.Error())
-				os.Exit(3)
+				os.Exit(5)
 			}
 		}
 	})
@@ -268,14 +271,7 @@ func (s *ProjectSegment) String() string {
 	return buf.String()
 }
 
-func (s *ProjectSegment) IsConcerned(p diff.FilePatch) bool {
-	from, to := p.Files()
-	// deletion
-	if to == nil {
-		to = from
-	}
-	path := to.Path()
-	// file name check
+func (s *ProjectSegment) IsFileNameMatch(path string) bool {
 	for _, fp := range s.FilePatterns {
 		if match, err := regexp.MatchString(fp, path); !match || err != nil {
 			continue
@@ -291,6 +287,20 @@ func (s *ProjectSegment) IsConcerned(p diff.FilePatch) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func (s *ProjectSegment) IsConcerned(p diff.FilePatch) bool {
+	from, to := p.Files()
+	// deletion
+	if to == nil {
+		to = from
+	}
+	path := to.Path()
+	if s.IsFileNameMatch(path) {
+		return true
+	}
+	// file name check
 	// TODO sophisticated content matching
 	var buffer bytes.Buffer
 	for _, chunk := range p.Chunks() {
@@ -365,6 +375,42 @@ func appendNew(arr *[]string, s string) {
 	if !found {
 		*arr = append(*arr, s)
 	}
+}
+
+func list(c *Config, repoPath, pathRe string) error {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("Failed to open git repository: %s", err.Error())
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return fmt.Errorf("Failed to get HEAD reference: %s", err.Error())
+	}
+	headCommit, err := repo.CommitObject(head.Hash())
+	if err != nil {
+		return fmt.Errorf("Failed to get HEAD commit %s", err.Error())
+	}
+	tree, err := headCommit.Tree()
+	if err != nil {
+		return fmt.Errorf("Failed to get files from repository: %s", err.Error())
+	}
+	tree.Files().ForEach(func(f *object.File) error {
+		if match, err := regexp.MatchString(pathRe, f.Name); !match || err != nil {
+			return nil
+		}
+		segments := make([]string, 0)
+		for _, s := range c.Segments {
+			if s.IsFileNameMatch(f.Name) {
+				segments = append(segments, s.Name)
+			}
+		}
+		if len(segments) == 0 {
+			segments = append(segments, "[No segments found]")
+		}
+		fmt.Printf("%20s: %s\n", strings.Join(segments, ", "), f.Name)
+		return nil
+	})
+	return nil
 }
 
 func submit(c *Config, repoPath, revision string) error {
