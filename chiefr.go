@@ -63,7 +63,7 @@ type Config struct {
 
 type ProjectManager interface {
 	SetAPIKey(key string)
-	HandlePullRequest(pullRequestURL string, segments ProjectSegments) error
+	HandlePullRequest(pullRequestURL string, segments ProjectSegments, close bool) error
 }
 
 func getProjectManagerFromURL(u string) (ProjectManager, error) {
@@ -87,12 +87,17 @@ func (g *GitHubManager) SetAPIKey(key string) {
 
 var githubAPIRepoURL string = "https://api.github.com/repos/"
 
-func (g *GitHubManager) HandlePullRequest(u string, segments ProjectSegments) error {
+func (g *GitHubManager) HandlePullRequest(u string, segments ProjectSegments, close bool) error {
 	// https://developer.github.com/v3/issues/assignees/#add-assignees-to-an-issue
 	// https://developer.github.com/v3/issues/labels/#add-labels-to-an-issue
 	if len(segments) == 0 {
 		return fmt.Errorf("No matching segments found for this patch. Please edit your maintainers file")
 	}
+	os := make(orderedSegmentList, 0, len(segments))
+	for _, s := range segments {
+		os = append(os, s)
+	}
+	sort.Sort(os)
 	URL, err := url.Parse(u)
 	if err != nil {
 		return fmt.Errorf("Failed to parse pull request URL: %s", err)
@@ -115,10 +120,6 @@ func (g *GitHubManager) HandlePullRequest(u string, segments ProjectSegments) er
 	if len(prChiefs) == 0 {
 		return errors.New("Chiefs not found for this pull request")
 	}
-	if repoURL == "" {
-		// TODO comment the valid repo url to the PR and close it
-		return errors.New("No repository found for this pull request")
-	}
 	pathParts := strings.Split(URL.Path, "/")
 	if len(pathParts) != 5 || pathParts[3] != "pull" || pathParts[1] == "" || pathParts[2] == "" {
 		return errors.New("Invalid pull request URL")
@@ -136,6 +137,41 @@ func (g *GitHubManager) HandlePullRequest(u string, segments ProjectSegments) er
 	tc := oauth2.NewClient(ctx, ts)
 
 	client := github.NewClient(tc)
+	if repoURL == "" {
+		if !close {
+			return errors.New("No repository found for this pull request")
+		}
+		comment := fmt.Sprintf(
+			"Hello!\nThis repository is not responsible for the changes you submitted. Submit your patch to %s",
+			os[0].Repository,
+		)
+		_, _, err = client.Issues.CreateComment(
+			ctx,
+			user,
+			repo,
+			prNum,
+			&github.IssueComment{
+				Body: &comment,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("Failed to create comment for pull request: %s", err)
+		}
+		closed := "closed"
+		_, _, err = client.PullRequests.Edit(
+			ctx,
+			user,
+			repo,
+			prNum,
+			&github.PullRequest{
+				State: &closed,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("Failed to close pull request: %s", err)
+		}
+		return nil
+	}
 
 	_, _, err = client.Issues.AddLabelsToIssue(ctx, user, repo, prNum, prTopics)
 	if err != nil {
@@ -209,8 +245,9 @@ func main() {
 		ref := cmd.StringArg("REVISION", "", "Git revision of the patch's first commit")
 		repo := cmd.StringArg("PULL_REQUEST_URL", "", "URL of the pull request")
 		key := cmd.StringArg("API_KEY", "", "API key of the project")
+		close := cmd.BoolOpt("close", false, "Close pull request if it has no matching segments")
 		cmd.Action = func() {
-			err := checkPullRequest(config, "./", *ref, *repo, *key)
+			err := checkPullRequest(config, "./", *ref, *repo, *key, *close)
 			if err != nil {
 				fmt.Println(err.Error())
 				os.Exit(5)
@@ -351,7 +388,7 @@ func initMaintainers(maintainersFileName string) (*Config, error) {
 	return c, nil
 }
 
-func checkPullRequest(c *Config, repoPath, revision, prURL, APIKey string) error {
+func checkPullRequest(c *Config, repoPath, revision, prURL, APIKey string, close bool) error {
 	pm, err := getProjectManagerFromURL(prURL)
 	if err != nil {
 		return err
@@ -361,7 +398,7 @@ func checkPullRequest(c *Config, repoPath, revision, prURL, APIKey string) error
 		return err
 	}
 	pm.SetAPIKey(APIKey)
-	return pm.HandlePullRequest(prURL, segments)
+	return pm.HandlePullRequest(prURL, segments, close)
 }
 
 func appendNew(arr *[]string, s string) {
