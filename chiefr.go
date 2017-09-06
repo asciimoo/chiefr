@@ -232,7 +232,8 @@ func main() {
 		}
 	})
 	app.Command("submit", "Submit patches to maintainers", func(cmd *cli.Cmd) {
-		ref := cmd.StringArg("REVISION", "", "Git revision of the patch's first commit")
+		ref := cmd.StringArg("REVISION", "master", "Git revision of the patch's first commit")
+		cmd.Spec = "[REVISION]"
 		cmd.Action = func() {
 			err := submit(config, "./", *ref)
 			if err != nil {
@@ -327,13 +328,7 @@ func (s *ProjectSegment) IsFileNameMatch(path string) bool {
 	return false
 }
 
-func (s *ProjectSegment) IsConcerned(p diff.FilePatch) bool {
-	from, to := p.Files()
-	// deletion
-	if to == nil {
-		to = from
-	}
-	path := to.Path()
+func (s *ProjectSegment) IsConcerned(p diff.FilePatch, path string) bool {
 	if s.IsFileNameMatch(path) {
 		return true
 	}
@@ -396,7 +391,7 @@ func checkPullRequest(c *Config, repoPath, revision, prURL, APIKey string, close
 	if err != nil {
 		return err
 	}
-	segments, err := getPatchSegments(c, repoPath, revision)
+	segments, _, err := getPatchInfo(c, repoPath, revision)
 	if err != nil {
 		return err
 	}
@@ -454,9 +449,12 @@ func list(c *Config, repoPath, pathRe string) error {
 }
 
 func submit(c *Config, repoPath, revision string) error {
-	segments, err := getPatchSegments(c, repoPath, revision)
+	segments, files, err := getPatchInfo(c, repoPath, revision)
 	if err != nil {
 		return err
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("No files to submit")
 	}
 	if len(segments) == 0 {
 		return fmt.Errorf("No matching segments found for this patch")
@@ -466,6 +464,8 @@ func submit(c *Config, repoPath, revision string) error {
 		os = append(os, s)
 	}
 	sort.Sort(os)
+
+	fmt.Printf("The following files are affected by this patch: %s\n\n", strings.Join(files, ", "))
 
 	fmt.Println("Please submit your patch to one of the following repositories:\n")
 	for i, s := range os {
@@ -484,36 +484,44 @@ func submit(c *Config, repoPath, revision string) error {
 	return nil
 }
 
-func getPatchSegments(c *Config, repoPath, revision string) (ProjectSegments, error) {
+func getPatchInfo(c *Config, repoPath, revision string) (ProjectSegments, []string, error) {
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open git repository:", err.Error())
+		return nil, nil, fmt.Errorf("Failed to open git repository:", err.Error())
 	}
 	head, err := repo.Head()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get HEAD of repository: %s", err.Error())
+		return nil, nil, fmt.Errorf("Failed to get HEAD of repository: %s", err.Error())
 	}
 	headCommit, err := repo.CommitObject(head.Hash())
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get HEAD commit: %s", err.Error())
+		return nil, nil, fmt.Errorf("Failed to get HEAD commit: %s", err.Error())
 	}
 	firstCommit, err := getCommitByRev(repo, revision)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	patch, err := firstCommit.Patch(headCommit)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create patch: %s", err.Error())
+		return nil, nil, fmt.Errorf("Failed to create patch: %s", err.Error())
 	}
 	relatedSegments := ProjectSegments{}
+	paths := make([]string, 0)
 	for _, p := range patch.FilePatches() {
+		from, to := p.Files()
+		// deletion
+		if to == nil {
+			to = from
+		}
+		path := to.Path()
+		appendNew(&paths, path)
 		for sName, s := range c.Segments {
-			if s.IsConcerned(p) {
+			if s.IsConcerned(p, path) {
 				relatedSegments[sName] = s
 			}
 		}
 	}
-	return relatedSegments, nil
+	return relatedSegments, paths, nil
 }
 
 func getCommitByRev(repo *git.Repository, revision string) (*object.Commit, error) {
