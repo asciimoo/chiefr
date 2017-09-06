@@ -220,6 +220,17 @@ func main() {
 			fmt.Println("not implemented")
 		}
 	})
+	app.Command("ask", "List where to ask questions", func(cmd *cli.Cmd) {
+		topic := cmd.StringArg("TOPIC", "", "Topic of the question or issue")
+		cmd.Spec = "[TOPIC]"
+		cmd.Action = func() {
+			err := ask(config, *topic)
+			if err != nil {
+				fmt.Println(err.Error())
+				os.Exit(6)
+			}
+		}
+	})
 	app.Command("list", "List files and their segments", func(cmd *cli.Cmd) {
 		path := cmd.StringArg("PATH_REGEX", ".*", "Path regex to filter files")
 		cmd.Spec = "[PATH_REGEX]"
@@ -410,6 +421,46 @@ func appendNew(arr *[]string, s string) {
 	if !found {
 		*arr = append(*arr, s)
 	}
+}
+
+func ask(config *Config, topic string) error {
+	if topic == "" {
+		topics := make([]string, 0)
+		for _, s := range config.Segments {
+			for _, t := range s.Topics {
+				appendNew(&topics, t)
+			}
+		}
+		if len(topics) == 0 {
+			return errors.New("No topics found for this project")
+		}
+		fmt.Printf("This project has the following topics: %s\n", strings.Join(topics, ", "))
+		fmt.Println("Run `chiefr ask [topic]` to get issue trackers belongs to the topic")
+		return nil
+	}
+	os := make(orderedSegmentList, 0, len(config.Segments))
+	for _, s := range config.Segments {
+		os = append(os, s)
+	}
+	sort.Sort(os)
+	issueTrackers := make([]string, 0, len(config.Segments))
+	for _, s := range os {
+		if s.IssueTracker == "" {
+			continue
+		}
+		for _, t := range s.Topics {
+			if t == topic {
+				appendNew(&issueTrackers, s.IssueTracker)
+				break
+			}
+		}
+	}
+	fmt.Println("Please submit your questions to one of the following issue trackers:")
+	for _, it := range issueTrackers {
+		fmt.Println(" -", it)
+	}
+	fmt.Println()
+	return nil
 }
 
 func list(c *Config, repoPath, pathRe string) error {
