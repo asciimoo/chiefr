@@ -5,7 +5,15 @@ Distributed project development model and toolkit
 Share and decentralize the development and maintenance of different parts of a project between its members.
 Chiefr is inspired by the contribution model of the Linux kernel and their `get_contributors.pl` script.
 
-![Chiefr workflow](docs/images/chiefr_workflow.png)
+![Chiefr workflow](docs/images/chiefr_example.gif)
+
+
+## Advantages
+
+ - Explicitly defined responsibilities
+ - Distributed contribution processing
+ - Automated pull request labeling based on the contribution's content
+ - Automated assignment of related maintainers to pull requests
 
 
 ## Why?
@@ -24,21 +32,14 @@ Chiefr requires to split a single project up to multiple logical segments, where
 own maintainers, repository and optionally other services like mailing lists or chat. Depending on the size
 of a project, its segments can be split into even smaller segments to be more manageable.
 
+
+![Chiefr workflow](docs/images/chiefr_workflow.png)
+
+
 If you have any question about applying this model to your project, feel free to get in touch with me.
 
 
-## Features
-
-As a maintainer:
- - Distribute the ownership of different parts of the codebase to different maintainers
- - Automate pull request labeling and the assignment of related maintainers
-
-As a contributor:
- - Chiefr shows the appropriate repository and maintainers to submit your contributions
-
-
 ## Usage
-
 
 ### Chiefr tool
 
