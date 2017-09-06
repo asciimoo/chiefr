@@ -87,6 +87,9 @@ Priority = 1
 
 ## Installation
 
+
+Check out [releases](https://github.com/asciimoo/chiefr/releases/latest) to get the binary or
+
 ```
 $ go get github.com/asciimoo/chiefr
 $ "$GOPATH/bin/chiefr" --help
