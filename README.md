@@ -47,7 +47,6 @@ Chiefr is also a command-line tool which depends on `.maintainers.ini` and has t
  - `list`: lists all the project segments
  - `update-pull-request`: updates a pull request's assignees and topics according to the `.maintainers.ini`
  - `ask`: shows where to ask questions about a topic (TODO)
- - `add`: adds new segment to the `.maintainers.ini` (TODO)
  - `scan-project`: searches for project pieces that don't have maintainers (TODO)
 
 
@@ -80,7 +79,7 @@ example segment in `.maintainers.ini`:
 [code]
 Repository = https://github.com/asciimoo/chiefr
 IssueTracker = https://github.com/asciimoo/chiefr/issues
-Chiefs = @asciimoo
+Chiefs = asciimoo
 FilePatterns = .+.go
 Priority = 1
 ```
