@@ -383,6 +383,9 @@ func initMaintainers(maintainersFileName string) (*Config, error) {
 		if len(ps.Chiefs) == 0 {
 			return nil, fmt.Errorf("Invalid config section '%s': missing 'Chiefs' property", s.Name())
 		}
+		for i, p := range ps.ContentPatterns {
+			ps.ContentPatterns[i] = fmt.Sprintf("(?m).*%s.*", p)
+		}
 		c.Segments[s.Name()] = ps
 	}
 	return c, nil
