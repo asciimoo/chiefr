@@ -47,7 +47,7 @@ Chiefr is also a command-line tool which depends on `.maintainers.ini` and has t
  - `submit`: shows where to submit your patch
  - `list`: lists all the project segments
  - `update-pull-request`: updates a pull request's assignees and topics according to the `.maintainers.ini`
- - `ask`: shows where to ask questions about a topic (TODO)
+ - `ask`: shows where to ask questions about a topic
  - `scan-project`: searches for project pieces that don't have maintainers (TODO)
 
 
